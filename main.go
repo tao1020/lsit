@@ -2,8 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
-	"os"
+	"strings"
 	"vibe/pb"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -19,11 +18,11 @@ func main() {
 		Region: aws.String(endpoints.ApSoutheast1RegionID),
 	}))
 
-	listFile(sess, "vibe.dev/")
+	poll(sess, "vibe.dev")
 
 }
 
-func listFile(sess *session.Session, bucket string) {
+func poll(sess *session.Session, bucket string) {
 	svc := s3.New(sess)
 
 	fmt.Printf(bucket)
@@ -42,10 +41,10 @@ func listFile(sess *session.Session, bucket string) {
 		}
 
 		for _, item := range resp.Contents {
-			if str := *item.Key; str[len(str)-4:] == ".vpf" {
-				downloadFile(sess, bucket, str)
-				page := parse()
-				listID(page)
+			if strings.Contains(*item.Key, ".vpf") {
+				buf := downloadFile(sess, bucket, *item.Key)
+				listBackground(buf)
+				listImageID(buf)
 				fmt.Printf("\n")
 			}
 		}
@@ -57,66 +56,53 @@ func listFile(sess *session.Session, bucket string) {
 	}
 }
 
-func downloadFile(sess *session.Session, bucket string, item string) {
-	file, err := os.Create("page.vpf.buf")
-	defer file.Close()
-	if err != nil {
-		fmt.Println("Unable to open file :", err)
+func downloadFile(sess *session.Session, bucket string, item string) *aws.WriteAtBuffer {
+	input := &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(item),
 	}
 	downloader := s3manager.NewDownloader(sess)
-	numBytes, err := downloader.Download(file,
-		&s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(item),
-		})
+	buf := aws.NewWriteAtBuffer([]byte{})
+	numBytes, err := downloader.Download(buf, input)
 	if err != nil {
 		fmt.Println("Unable to download item ", item, err)
 	}
-	fmt.Println("downloaded", file.Name(), numBytes, "bytes")
+	fmt.Println("file downloaded", numBytes, "bytes")
+	return buf
 }
 
-func parse() (page *pb.Page) {
-	file, err := ioutil.ReadFile("page.vpf.buf")
-	if err != nil {
-		fmt.Println("faild to read file:", err)
-	}
-	page = &pb.Page{}
-	if err := proto.Unmarshal(file, page); err != nil {
+func listBackground(buf *aws.WriteAtBuffer) {
+	page := &pb.Background{}
+	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
 		fmt.Println("failed to parse file:", err)
 	}
-	return page
+
+	if bkgimg := page.GetImageId(); bkgimg != "" {
+		fmt.Println("backgroundImageID:", bkgimg)
+	} else {
+		fmt.Println("backgroundImageID:No backgroundImageID")
+	}
+
+	if fileID := page.GetMeta().GetPdfMeta().GetFileId(); fileID != "" {
+		fmt.Println("fileid:", fileID)
+	} else {
+		fmt.Println("fileid:No fileID")
+	}
 }
-func listID(page *pb.Page) {
-	file, err := ioutil.ReadFile("page.vpf.buf")
-	if err != nil {
-		fmt.Println("faild to read file:", err)
-	}
-	page = &pb.Page{}
-	if err := proto.Unmarshal(file, page); err != nil {
+
+func listImageID(buf *aws.WriteAtBuffer) {
+	page := &pb.PageFile{}
+	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
 		fmt.Println("failed to parse file:", err)
 	}
-	fmt.Println("PageID:", page.GetPageId())
-	if fileID := page.GetBackground().GetMeta().GetPdfMeta().GetFileId(); fileID != "" {
-		fmt.Println("FileId:", fileID)
-	} else {
-		fmt.Println("no background file")
-	}
-
-	if bkgImage := page.GetBackground().GetImageId(); bkgImage != "" {
-		fmt.Println("background imageId", bkgImage)
-	} else {
-		fmt.Println("no background image")
-	}
-
-	magnets := page.GetMagnets()
-	count := 1
-	for _, a := range magnets {
-		if magnetImageID := a.GetImage().GetImageId(); magnetImageID != "" {
-			fmt.Println("magnetImage", count, "ID:", magnetImageID)
-			count++
+	flag := true
+	for _, event := range page.GetPageEvents() {
+		if img := event.GetAddMagnet().GetMagnet().GetImage(); img != nil {
+			fmt.Println("imageid:", img.GetImageId())
+			flag = false
 		}
 	}
-	if count == 1 {
-		fmt.Println("no magnet image")
+	if flag {
+		fmt.Println("imageid:No image")
 	}
 }
