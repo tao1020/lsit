@@ -17,10 +17,17 @@ func main() {
 	sess := session.Must(session.NewSession(&aws.Config{
 		Region: aws.String(endpoints.ApSoutheast1RegionID),
 	}))
-
-	if err := poll(sess, "vibe.dev"); err != nil {
-		fmt.Println("fail to pool files", err)
-	}
+	bucket := "vibe.dev"
+	/*
+		testitem := "boards/Ct7dNTKpmr26rGb0PrW1L0/7Wufrt1lF52lfoH6WGQ1vC/page.vpf"
+		buf, _ := downloadFile(sess, bucket, testitem)
+		page := &pb.PageFile{}
+		if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
+			fmt.Println(err)
+		}
+		listImageID(buf, testitem)
+	*/
+	poll(sess, bucket)
 }
 
 func poll(sess *session.Session, bucket string) error {
@@ -40,23 +47,20 @@ func poll(sess *session.Session, bucket string) error {
 			return err
 		}
 
-		for _, item := range resp.Contents {
-			if strings.Contains(*item.Key, ".vpf") {
+		for i, item := range resp.Contents {
+			if strings.HasSuffix(*item.Key, "vpf") {
 				buf, err := downloadFile(sess, bucket, *item.Key)
 				if err != nil {
 					return err
 				}
-				if err = listBackground(buf); err != nil {
+				if err = listImageID(buf, *item.Key); err != nil {
 					return err
 				}
-				if err = listImageID(buf); err != nil {
-					return err
-				}
-				fmt.Printf("\n")
+				fmt.Printf("%d\n", i)
 			}
 		}
-		if resp.ContinuationToken != nil {
-			params.ContinuationToken = resp.ContinuationToken
+		if *resp.NextContinuationToken != "" {
+			params.ContinuationToken = resp.NextContinuationToken
 		} else {
 			break
 		}
@@ -79,6 +83,44 @@ func downloadFile(sess *session.Session, bucket string, item string) (*aws.Write
 	return buf, nil
 }
 
+func listImageID(buf *aws.WriteAtBuffer, item string) error {
+	page := &pb.PageFile{}
+	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
+		return err
+	}
+
+	for _, event := range page.GetPageEvents() {
+		flag := false
+		if img := event.GetAddMagnet().GetMagnet().GetImage(); img != nil {
+			mgtImgID := img.GetImageId()
+			flag = true
+			defer fmt.Println("magnetImageID:", mgtImgID)
+		}
+
+		if bkgImg := event.GetSetBackground(); bkgImg != nil {
+			bkgImgID := bkgImg.GetImageId()
+			flag = true
+			defer fmt.Println("backgroundImageID:", bkgImgID)
+		}
+
+		if file := event.GetSetBackground().GetBackgroundMeta().GetPdfMeta(); file != nil {
+			fileID := file.GetFileId()
+			flag = true
+			defer fmt.Println("fileID:", fileID)
+		}
+		if flag {
+			fmt.Println("boardID:", strings.FieldsFunc(item, f)[1])
+			fmt.Println("PageID:", page.GetPageId())
+		}
+	}
+
+	return nil
+}
+func f(c rune) bool {
+	return c == '/'
+}
+
+/*
 func listBackground(buf *aws.WriteAtBuffer) error {
 	page := &pb.Background{}
 	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
@@ -98,21 +140,4 @@ func listBackground(buf *aws.WriteAtBuffer) error {
 	}
 	return nil
 }
-
-func listImageID(buf *aws.WriteAtBuffer) error {
-	page := &pb.PageFile{}
-	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
-		return err
-	}
-	flag := true
-	for _, event := range page.GetPageEvents() {
-		if img := event.GetAddMagnet().GetMagnet().GetImage(); img != nil {
-			fmt.Println("imageid:", img.GetImageId())
-			flag = false
-		}
-	}
-	if flag {
-		fmt.Println("imageid:No image")
-	}
-	return nil
-}
+*/
