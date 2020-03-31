@@ -18,11 +18,12 @@ func main() {
 		Region: aws.String(endpoints.ApSoutheast1RegionID),
 	}))
 
-	poll(sess, "vibe.dev")
-
+	if err := poll(sess, "vibe.dev"); err != nil {
+		fmt.Println("fail to pool files", err)
+	}
 }
 
-func poll(sess *session.Session, bucket string) {
+func poll(sess *session.Session, bucket string) error {
 	svc := s3.New(sess)
 
 	fmt.Printf(bucket)
@@ -35,16 +36,22 @@ func poll(sess *session.Session, bucket string) {
 	}
 	for {
 		resp, err := svc.ListObjectsV2(params)
-
 		if err != nil {
-			fmt.Printf("Unable to list items in bucket %q, %v", bucket, err)
+			return err
 		}
 
 		for _, item := range resp.Contents {
 			if strings.Contains(*item.Key, ".vpf") {
-				buf := downloadFile(sess, bucket, *item.Key)
-				listBackground(buf)
-				listImageID(buf)
+				buf, err := downloadFile(sess, bucket, *item.Key)
+				if err != nil {
+					return err
+				}
+				if err = listBackground(buf); err != nil {
+					return err
+				}
+				if err = listImageID(buf); err != nil {
+					return err
+				}
 				fmt.Printf("\n")
 			}
 		}
@@ -54,9 +61,10 @@ func poll(sess *session.Session, bucket string) {
 			break
 		}
 	}
+	return nil
 }
 
-func downloadFile(sess *session.Session, bucket string, item string) *aws.WriteAtBuffer {
+func downloadFile(sess *session.Session, bucket string, item string) (*aws.WriteAtBuffer, error) {
 	input := &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(item),
@@ -65,16 +73,16 @@ func downloadFile(sess *session.Session, bucket string, item string) *aws.WriteA
 	buf := aws.NewWriteAtBuffer([]byte{})
 	numBytes, err := downloader.Download(buf, input)
 	if err != nil {
-		fmt.Println("Unable to download item ", item, err)
+		return nil, err
 	}
 	fmt.Println("file downloaded", numBytes, "bytes")
-	return buf
+	return buf, nil
 }
 
-func listBackground(buf *aws.WriteAtBuffer) {
+func listBackground(buf *aws.WriteAtBuffer) error {
 	page := &pb.Background{}
 	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
-		fmt.Println("failed to parse file:", err)
+		return err
 	}
 
 	if bkgimg := page.GetImageId(); bkgimg != "" {
@@ -88,12 +96,13 @@ func listBackground(buf *aws.WriteAtBuffer) {
 	} else {
 		fmt.Println("fileid:No fileID")
 	}
+	return nil
 }
 
-func listImageID(buf *aws.WriteAtBuffer) {
+func listImageID(buf *aws.WriteAtBuffer) error {
 	page := &pb.PageFile{}
 	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
-		fmt.Println("failed to parse file:", err)
+		return err
 	}
 	flag := true
 	for _, event := range page.GetPageEvents() {
@@ -105,4 +114,5 @@ func listImageID(buf *aws.WriteAtBuffer) {
 	if flag {
 		fmt.Println("imageid:No image")
 	}
+	return nil
 }
