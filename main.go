@@ -7,6 +7,7 @@ import (
 	"vibe/pb"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -14,15 +15,12 @@ import (
 )
 
 func main() {
-	/*
-		sess := session.Must(session.NewSession(&aws.Config{
-			Region: aws.String(endpoints.ApSoutheast1RegionID),
-		}))
+	sess := session.Must(session.NewSession(&aws.Config{
+		Region: aws.String(endpoints.ApSoutheast1RegionID),
+	}))
 
-		listFile(sess, "vibe.dev/")
-	*/
-	page := parse()
-	listID(page)
+	listFile(sess, "vibe.dev/")
+
 }
 
 func listFile(sess *session.Session, bucket string) {
