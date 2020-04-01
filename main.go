@@ -7,6 +7,7 @@ import (
 	"vibe/pb"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -24,20 +25,24 @@ type ID struct {
 }
 
 func main() {
+	accessKey := "AKIAZU4YFXEVPPH5C526"
+	secretKey := "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"
+
 	sess := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(endpoints.ApSoutheast1RegionID),
+		Region:      aws.String(endpoints.ApSoutheast1RegionID),
+		Credentials: credentials.NewStaticCredentials(accessKey, secretKey, ""),
 	}))
 	bucket := "vibe.dev"
-	/*
-		testitem := "boards/Ct7dNTKpmr26rGb0PrW1L0/7Wufrt1lF52lfoH6WGQ1vC/page.vpf"
-		buf, _ := downloadFile(sess, bucket, testitem)
-		page := &pb.PageFile{}
-		if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
-			fmt.Println(err)
-		}
-		listImageID(buf, testitem)
-	*/
-	poll(sess, bucket)
+
+	testitem := "boards/Ct7dNTKpmr26rGb0PrW1L0/7Wufrt1lF52lfoH6WGQ1vC/page.vpf"
+	buf, _ := downloadFile(sess, bucket, testitem)
+	page := &pb.PageFile{}
+	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
+		fmt.Println(err)
+	}
+	listImageID(buf, testitem)
+
+	//	poll(sess, bucket)
 }
 
 func poll(sess *session.Session, bucket string) error {
@@ -66,7 +71,7 @@ func poll(sess *session.Session, bucket string) error {
 				if err = listImageID(buf, *item.Key); err != nil {
 					return err
 				}
-				fmt.Printf("\n")
+				//fmt.Printf("\n")
 			}
 		}
 		if *resp.NextContinuationToken != "" {
@@ -123,7 +128,7 @@ func listImageID(buf *aws.WriteAtBuffer, item string) error {
 		}
 	}
 	if flag {
-		idJSON, _ := json.Marshal(id)
+		idJSON, _ := json.MarshalIndent(id, "", "    ")
 		fmt.Println(string(idJSON))
 
 		/*
