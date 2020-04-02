@@ -17,39 +17,37 @@ import (
 
 //ID
 type ID struct {
-	BoardID      string   `json:"BoardID"`
-	PageID       string   `json:"PageID"`
-	FileID       string   `json:"FileID"`
-	BackgroundID string   `json:"BackgroundID"`
-	ImageID      []string `json:"ImageID"`
+	BoardID string   `json:"BoardID"`
+	PageID  string   `json:"PageID"`
+	FileID  []string `json:"FileID"`
 }
 
 func main() {
-	accessKey := "AKIAZU4YFXEVPPH5C526"
-	secretKey := "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"
+	accessKey := ""
+	secretKey := ""
 
 	sess := session.Must(session.NewSession(&aws.Config{
 		Region:      aws.String(endpoints.ApSoutheast1RegionID),
 		Credentials: credentials.NewStaticCredentials(accessKey, secretKey, ""),
 	}))
 	bucket := "vibe.dev"
-
-	testitem := "boards/Ct7dNTKpmr26rGb0PrW1L0/7Wufrt1lF52lfoH6WGQ1vC/page.vpf"
-	buf, _ := downloadFile(sess, bucket, testitem)
-	page := &pb.PageFile{}
-	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
-		fmt.Println(err)
-	}
-	listImageID(buf, testitem)
-
-	//	poll(sess, bucket)
+	/*
+		testitem := "boards/Ct7dNTKpmr26rGb0PrW1L0/7Wufrt1lF52lfoH6WGQ1vC/page.vpf"
+		buf, _ := downloadFile(sess, bucket, testitem)
+		page := &pb.PageFile{}
+		if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
+			fmt.Println(err)
+		}
+		listFileID(buf, testitem)
+	*/
+	poll(sess, bucket)
 }
 
 func poll(sess *session.Session, bucket string) error {
 	svc := s3.New(sess)
 
-	fmt.Printf(bucket)
-	fmt.Printf("\n")
+	//	fmt.Printf(bucket)
+	//	fmt.Printf("\n")
 
 	params := &s3.ListObjectsV2Input{
 		Bucket:            aws.String(bucket),
@@ -68,7 +66,7 @@ func poll(sess *session.Session, bucket string) error {
 				if err != nil {
 					return err
 				}
-				if err = listImageID(buf, *item.Key); err != nil {
+				if err = listFileID(buf, *item.Key); err != nil {
 					return err
 				}
 				//fmt.Printf("\n")
@@ -99,52 +97,35 @@ func downloadFile(sess *session.Session, bucket string, item string) (*aws.Write
 	return buf, nil
 }
 
-func listImageID(buf *aws.WriteAtBuffer, item string) error {
+func listFileID(buf *aws.WriteAtBuffer, item string) error {
 	page := &pb.PageFile{}
 	if err := proto.Unmarshal(buf.Bytes(), page); err != nil {
 		return err
 	}
 	flag := false
 	id := ID{}
-	id.BoardID = strings.FieldsFunc(item, f)[1]
-	id.PageID = page.GetPageId()
+	id.BoardID = strings.Split(item, "/")[1]
+	id.PageID = strings.Split(item, "/")[2]
 	for _, event := range page.GetPageEvents() {
 		if img := event.GetAddMagnet().GetMagnet().GetImage(); img != nil {
-			id.ImageID = append(id.ImageID, img.GetImageId())
+			id.FileID = append(id.FileID, img.GetImageId())
 			flag = true
-			//	defer fmt.Println("magnetImageID:", mgtImgID)
 		}
-
 		if bkgImg := event.GetSetBackground(); bkgImg != nil {
-			id.BackgroundID = bkgImg.GetImageId()
+			id.FileID = append(id.FileID, bkgImg.GetImageId())
 			flag = true
-			//defer fmt.Println("backgroundImageID:", bkgImgID)
 		}
-
 		if file := event.GetSetBackground().GetBackgroundMeta().GetPdfMeta(); file != nil {
-			id.FileID = file.GetFileId()
+			id.FileID = append(id.FileID, file.GetFileId())
 			flag = true
-			//defer fmt.Println("fileID:", fileID)
 		}
 	}
 	if flag {
-		idJSON, _ := json.MarshalIndent(id, "", "    ")
+		idJSON, _ := json.Marshal(id)
 		fmt.Println(string(idJSON))
-
-		/*
-			fmt.Println("boardid:", id.boardID)
-			fmt.Println("pageid:", id.pageID)
-			fmt.Println("fileid:", id.fileID)
-			if len(id.imageID) != 0 {
-				fmt.Println("imageid:", len(id.imageID))
-			}
-			fmt.Println("backgroundid:", id.backgroundID)
-		*/
+		return nil
 	}
 	return nil
-}
-func f(c rune) bool {
-	return c == '/'
 }
 
 /*
@@ -155,9 +136,9 @@ func listBackground(buf *aws.WriteAtBuffer) error {
 	}
 
 	if bkgimg := page.GetImageId(); bkgimg != "" {
-		fmt.Println("backgroundImageID:", bkgimg)
+		fmt.Println("backgroundFileID:", bkgimg)
 	} else {
-		fmt.Println("backgroundImageID:No backgroundImageID")
+		fmt.Println("backgroundFileID:No backgroundFileID")
 	}
 
 	if fileID := page.GetMeta().GetPdfMeta().GetFileId(); fileID != "" {
